@@ -1,0 +1,65 @@
+from plot import *
+import numpy as np
+import tensorflow as tf
+import TrainCNNWithFT as TrainCNN
+g1 = tf.Graph()
+session = tf.Session(graph=g1)
+class_names = ['tool1', 'tool2', 'tool3', 'tool4', 'tool5', 'tool6']
+def Conrtofimage(image):
+    idx = 0
+    DATA_LEN = 224*224*3
+    CHANNEL_LEN = 224*224
+    SHAPE = 224
+    img = np.zeros((1, DATA_LEN), dtype = np.uint8)
+    s, c = SHAPE, CHANNEL_LEN
+    img[idx, :c] = np.reshape(image[:, :, 0],c)
+    img[idx, c:2*c] = np.reshape(image[:, :, 1],c)
+    img[idx, 2*c:] = np.reshape(image[:, :, 2],c)
+    img_float = np.array(img, dtype=float)/255.0
+    image=img_float.reshape([-1, 3, 224, 224])
+    image=image.transpose([0, 2, 3, 1])
+    return image
+with session.as_default():
+    with g1.as_default():
+        x_ = tf.placeholder(tf.float32, shape=[None, 224, 224, 3], name='x')
+        layer_conv1, weights_conv1 = \
+            TrainCNN.new_conv_layer(input=x_,
+                                    num_input_channels=num_channels,
+                                    filter_size=5,
+                                    num_filters=64,
+                                    name='layer_conv1',
+                                    use_pooling=True)
+        layer_conv2, weights_conv2 = \
+            TrainCNN.new_conv_layer(input=layer_conv1,
+                                    num_input_channels=64,
+                                    filter_size=5,
+                                    num_filters=64,
+                                    name='layer_conv2',
+                                    use_pooling=True)
+        layer_flat, num_features = TrainCNN.flatten_layer(layer_conv2)
+        print('num_features=' + str(num_features))
+        print('layer_flat=' + str(layer_flat))
+        layer_fc1 = TrainCNN.new_fc_layer(input=layer_flat,
+                                          num_inputs=num_features,
+                                          num_outputs=256,
+                                          use_relu=True)
+        # layer_fc1 = tf.nn.dropout(layer_fc1,keep_prob=0.5)
+        layer_fc2 = TrainCNN.new_fc_layer(input=layer_fc1,
+                                          num_inputs=256,
+                                          num_outputs=6,
+                                          use_relu=False)
+        y_pred = tf.nn.softmax(layer_fc2)
+        y_pred_cls = tf.argmax(y_pred, axis=1)
+        saver = tf.train.Saver(tf.global_variables())
+        save_dir = './checkpoints/'
+        print("Trying to restore last checkpoint ...")
+        last_chk_path = tf.train.latest_checkpoint(checkpoint_dir=save_dir)
+        saver.restore(session, save_path=last_chk_path)
+        print("Restored checkpoint from:", last_chk_path)
+def CNNForSchering(image):
+    with session.as_default():
+        with session.graph.as_default():
+            image_test = Conrtofimage(image)
+            img_float = image_test[0]
+            label_pred, cls_pred = session.run([y_pred, y_pred_cls], feed_dict={x_: [img_float]})
+return class_names[int(cls_pred)]
