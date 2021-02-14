@@ -1,0 +1,230 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import cv2, math, time, urllib
+import numpy as np
+from UsingModeCNNLocal import *
+from UsingModeCNN import *
+kernel = np.ones((5,5),np.uint8)
+lower_blue=np.array([58, 103, 87])
+upper_blue=np.array([83,231,160])
+upper_hand=np.array([256,240,130])
+IP_dress = "http://172.31.1.100:8080/photoaf.jpg"
+def ProcessingOfImage(Num):
+    resp=urllib.urlopen(IP_dress)
+    frame1= np.asarray(bytearray(resp.read()), dtype="uint8")
+    frame1 = cv2.imdecode(frame1, cv2.IMREAD_UNCHANGED)
+    #frame1 = cv2.imread('/home/bitwanghaili/catkin_ws/src/kuka_controller/ControRobot/ImageProcess/test_images1.jpg',cv2.IMREAD_UNCHANGED)
+    X=0
+    Y=0
+    Angle = 90
+    print('Предварительная обработка изображений')
+    frame = cv2.resize(frame1, (992, 744))
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    dilation = cv2.dilate(mask, kernel, iterations=1)
+    edged = cv2.Canny(dilation, 35, 125)
+    _, contours, hierarchy = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is not None:
+        MaxContours = cv2.minAreaRect(max(contours,key=cv2.contourArea))
+        box=[np.int0(cv2.boxPoints(MaxContours))]
+        if box[0][0][0] < box[0][2][0]:
+            x1=box[0][0][0]
+            x2=box[0][2][0]
+        else:
+            x1=box[0][2][0]
+            x2=box[0][0][0]
+        if box[0][0][1] < box[0][2][1]:
+            y1=box[0][0][1]
+            y2=box[0][2][1]
+        else:
+            y1=box[0][2][1]
+            y2=box[0][0][1]
+        frame = cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        img_blue = frame[y1+6:y2-6, x1+6:x2-6]
+        mask_blue = mask[y1+6:y2-6, x1+6:x2-6]
+        if mask_blue.shape[0]>0 and mask_blue.shape[1]>0:
+                    mask_blue = cv2.erode(mask_blue, kernel, iterations=1)
+                    _, contours1, hierarchy1 = cv2.findContours(mask_blue.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+                    if hierarchy1 is not None:
+                        for i in range(len(contours1)):
+                            area = cv2.contourArea(contours1[i])
+                            if area > 1000 and area < 20000:
+                                x,y,w,h = cv2.boundingRect(contours1[i])
+                                img_blue = cv2.rectangle(img_blue, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                                cv2.imwrite("./ImageProcess/data/Test" + "/test.jpg",
+                                            frame1[4*(y1+y+6):4*(y1+y+h+6), 4*(x1+x+6):4*(x1+x+w+6)])
+				image_test = frame1[4*(y1+y+6):4*(y1+y+h+6), 4*(x1+x+6):4*(x1+x+w+6)]
+				image_test = cv2.cvtColor(image_test, cv2.COLOR_BGR2RGB)
+				image_test = cv2.resize(image_test, (224, 224))
+                                X_x = x1+x + w / 2
+                                Y_y = y1+y + h / 2
+                                X_1 = -0.0203*X_x +0.93*Y_y + 126.146
+                                Y_1 = 0.913*X_x + 0.0367*Y_y - 495.61
+                                
+                                text_name=CNNForSchering(image_test)    
+                                cv2.putText(frame, text_name, (x1 + x - 5, y1 + y + h + 15),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.3, (87, 33, 77), 1, cv2.LINE_AA)
+                                    
+                                epsilon = 0.01 * cv2.arcLength(contours1[i], True)
+                                approx = cv2.approxPolyDP(contours1[i], epsilon, True)
+                                box = np.int0(cv2.boxPoints(cv2.minAreaRect(contours1[i])))
+                                img_blue=cv2.drawContours(img_blue, [box], 0, (0, 255, 255), 1)
+                                Point1 = (0, 0)
+                                Point2 = (0, 0)
+                                Number_1 = 0
+                                Number_2 = 0
+                                angle=90
+                                for j in range(approx.shape[0]):
+                                    cv2.imwrite("./ImageProcess/data/Test_local/test.jpg",
+                                            frame1[4*(y1+approx[j][0][1] - 7 + 6):4*(y1+approx[j][0][1] + 7 + 6),
+                                            4*(x1+approx[j][0][0] - 7 + 6 ):4*(x1+approx[j][0][0] + 7 + 6)])
+				    image_test_1=frame1[4*(y1+approx[j][0][1] - 7 + 6):4*(y1+approx[j][0][1] + 7 + 6),
+                                            	4*(x1+approx[j][0][0] - 7 + 6 ):4*(x1+approx[j][0][0] + 7 + 6)]
+				    image_test_1 = cv2.cvtColor(image_test_1, cv2.COLOR_BGR2RGB)
+                                    a = CNNForScheringLocal(image_test_1)
+                                    if a==1:
+                                        img_blue = cv2.circle(img_blue, (approx[j][0][0], approx[j][0][1]), 2,
+                                                              (255, 0, 255), 2)
+                                        Point1 = (Point1[0]+approx[j][0][0], Point1[1]+approx[j][0][1])
+                                        Number_1 = Number_1 + 1
+                                    elif a==2:
+                                        img_blue = cv2.circle(img_blue, (approx[j][0][0], approx[j][0][1]), 4,
+                                                              (0, 255, 0), 2)
+                                        Point2 = (Point2[0]+approx[j][0][0], Point2[1]+approx[j][0][1])
+                                        Number_2=Number_2 + 1
+                                    elif a==3:
+                                        img_blue = cv2.circle(img_blue, (approx[j][0][0], approx[j][0][1]), 1,
+                                                             (255, 0, 0), 2)
+                                if Number_1 is not 0 and Number_2 is not 0:
+                                    Point1=(int(Point1[0]/Number_1),int(Point1[1]/Number_1))
+                                    Point2=(int(Point2[0]/Number_2),int(Point2[1]/Number_2))
+                                    Point3=(int((0.6*Point1[0]+0.4*Point2[0])),int((0.6*Point1[1]+0.4*Point2[1])))
+                                    img_blue = cv2.circle(img_blue, Point3 , 1,(255, 100, 100), 10)
+                                    img_blue = cv2.line(img_blue, Point1, Point2, (255, 255, 0), 2)
+                                    if -Point1[1]+Point2[1]>0 and Point1[0]-Point2[0]>0:
+                                        angle = int(math.atan((-Point1[1]+Point2[1])/(Point1[0]-Point2[0]))*180/math.pi)
+                                    elif -Point1[1]+Point2[1]>0 and Point1[0]-Point2[0]<0:
+                                        angle = 180 + int(math.atan((-Point1[1] + Point2[1]) / (Point1[0] - Point2[0])) * 180 / math.pi)
+                                    elif -Point1[1]+Point2[1]<0 and Point1[0]-Point2[0]<0:
+                                        angle = 180 + int(math.atan((-Point1[1] + Point2[1]) / (Point1[0] - Point2[0])) * 180 / math.pi)
+                                    elif -Point1[1]+Point2[1]<0 and Point1[0]-Point2[0]>0:
+                                        angle = 360 + int(math.atan((-Point1[1] + Point2[1]) / (Point1[0] - Point2[0])) * 180 / math.pi)
+                                text_coordinate = "x="+str(int(X_1)) + ",y="+ str(int(Y_1))+",Angle=" + str(angle)
+                                cv2.putText(frame, text_coordinate, (x1 + x - 5, y1 + y + h + 30),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.3, (87, 33, 77), 1, cv2.LINE_AA)
+                                if "tool"+str(Num) in text_name:
+                                    X = X_1
+                                    Y = Y_1
+                                    Angle = angle
+    cv2.imshow('mask', mask)
+    cv2.imshow('Image_Object', frame)
+    cv2.waitKey(5)
+    print('Предварительная обработка изображения выпольнина')
+    print('X='+str(X), 'Y='+str(Y), 'Angle='+str(Angle))
+    return X,Y,Angle
+def Check_object():
+    X1=-10
+    Y1=0
+    X2=-10
+    Y2=0
+    X3=-10
+    Y3=0
+    X4=-10
+    Y4=0
+    X5=-10
+    Y5=0
+    print('Предварительная обработка изображений')
+    resp=urllib.urlopen(IP_dress)
+    frame1= np.asarray(bytearray(resp.read()), dtype="uint8")
+    frame1 = cv2.imdecode(frame1, cv2.IMREAD_UNCHANGED)
+    #frame1 = cv2.imread('/home/bitwanghaili/catkin_ws/src/kuka_controller/ControRobot/ImageProcess/test_images1.jpg',cv2.IMREAD_UNCHANGED)
+    frame = cv2.resize(frame1, (992, 744))
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    dilation = cv2.dilate(mask, kernel, iterations=1)
+    edged = cv2.Canny(dilation, 35, 125)
+    _, contours, hierarchy = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    if hierarchy is not None:
+        MaxContours = cv2.minAreaRect(max(contours,key=cv2.contourArea))
+        box=[np.int0(cv2.boxPoints(MaxContours))]
+        if box[0][0][0] < box[0][2][0]:
+            x1=box[0][0][0]
+            x2=box[0][2][0]
+        else:
+            x1=box[0][2][0]
+            x2=box[0][0][0]
+        if box[0][0][1] < box[0][2][1]:
+            y1=box[0][0][1]
+            y2=box[0][2][1]
+        else:
+            y1=box[0][2][1]
+            y2=box[0][0][1]
+        frame = cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        img_blue = frame[y1+6:y2-6, x1+6:x2-6]
+        mask_blue = mask[y1+6:y2-6, x1+6:x2-6]
+
+        if mask_blue.shape[0]>0 and mask_blue.shape[1]>0:
+                    mask_blue = cv2.erode(mask_blue, kernel, iterations=1)
+                    #mask_blue = cv2.Canny(mask_blue, 35, 125)
+                    _, contours1, hierarchy1 = cv2.findContours(mask_blue.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+                    if hierarchy1 is not None:
+                        for i in range(len(contours1)):
+                            area = cv2.contourArea(contours1[i])
+                            if area > 1000 and area < 20000:
+                                x,y,w,h = cv2.boundingRect(contours1[i])
+                                img_blue = cv2.rectangle(img_blue, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                                cv2.imwrite("./ImageProcess/data/Test" + "/test.jpg", frame1[4*(y1+y+5):4*(y1+y+h+5), 4*(x1+x+5):4*(x1+x+w+5)])
+				image_test = frame1[4*(y1+y+6):4*(y1+y+h+6), 4*(x1+x+6):4*(x1+x+w+6)]
+				image_test = cv2.cvtColor(image_test, cv2.COLOR_BGR2RGB)
+				image_test = cv2.resize(image_test, (224, 224))
+                                X_x = x1+x + w / 2
+                                Y_y = y1+y + h / 2
+                                X_1 = 0.921*Y_y + 111.45
+                                Y_1 = 0.987*X_x - 563.071
+                                
+                                text_coordinate = "x="+str(int(X_1)) + "," +"y="+ str(int(Y_1))
+                                
+                                cv2.putText(frame, text_coordinate, (x1 + x - 5, y1 + y + h + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.3,
+                                            (87, 33, 77), 1,
+                                            cv2.LINE_AA)
+                                
+                                text_name=CNNForSchering(image_test)    
+                                cv2.putText(frame, text_name, (x1 + x - 5, y1 + y + h + 15), cv2.FONT_HERSHEY_SIMPLEX, 0.3,
+                                            (87, 33, 77), 1,
+                                            cv2.LINE_AA)
+                                if "tool1" in text_name:
+                                    X1 = 0.921*Y_y + 111.45
+                                    Y1 = 0.987*X_x - 563.071
+                                if "tool2" in text_name:
+                                    X2 = 0.921*Y_y + 111.45
+                                    Y2 = 0.987*X_x - 563.071
+                                if "tool3" in text_name:
+                                    X3 = 0.921*Y_y + 111.45
+                                    Y3 = 0.987*X_x - 563.071
+                                if "tool4" in text_name:
+                                    X4 = 0.921*Y_y + 111.45
+                                    Y4 = 0.987*X_x - 563.071
+                                if "tool5" in text_name:
+                                    X5 = 0.921*Y_y + 111.45
+                                    Y5 = 0.987*X_x - 563.071
+    cv2.imshow('mask', mask_blue)
+    cv2.imshow('Image_Object', frame)
+    cv2.waitKey(5)
+    print('Предварительная обработка изображения выпольнина')
+    return X1,Y1,X2,Y2,X3,Y3,X4,Y4,X5,Y5
+def ImageOfHand():   
+     fil = open('/home/bitwanghaili/Desktop/Socket/Data.txt', 'r')
+     txt = str(fil.readline())
+     pos1=txt.find(',')
+     pos2=txt.find('(')
+     pos3=txt[pos1+2:].find(',')
+     pos4=txt.find(')')
+     if txt[pos2+1:pos1] not in 'None':
+        x = int(txt[pos2+1:pos1])
+        y = int(txt[pos1+2:pos1+2+pos3])
+        z = int(txt[pos1+3+pos3:pos4])+50
+     else:
+        x=None
+        y=None
+        z=None
+     return x, y, z
